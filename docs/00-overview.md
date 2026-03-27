@@ -27,6 +27,7 @@
 | [06 — 使用指南](06-usage-guide.md) | 从零到跑通的完整步骤 |
 | [07 — OpenClaw 源码分析](07-openclaw-analysis.md) | 33个源文件深度解析、时序图、架构图、协议类型体系、CDN加密方案 |
 | [08 — 权限模式](08-permission-modes.md) | auto 模式详解、6 种模式对比、安全策略 |
+| [09 — Agent SDK 深度科普](09-agent-sdk-deep-dive.md) | SDK 架构、query() 消息流、resume 多轮对话、Hooks/MCP 扩展、迁移指南 |
 
 ## 技术栈
 
