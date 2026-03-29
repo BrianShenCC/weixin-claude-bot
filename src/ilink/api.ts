@@ -9,8 +9,8 @@ import type {
   SendTypingReq,
   GetConfigResp,
 } from "./types.js";
+import { buildBaseInfo, buildIlinkCommonHeaders } from "./protocol.js";
 
-const CHANNEL_VERSION = "weixin-claude-bot/0.1.0";
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 const DEFAULT_API_TIMEOUT_MS = 15_000;
 
@@ -31,6 +31,7 @@ function buildHeaders(token: string, body: string): Record<string, string> {
     AuthorizationType: "ilink_bot_token",
     "Content-Length": String(Buffer.byteLength(body, "utf-8")),
     "X-WECHAT-UIN": randomWechatUin(),
+    ...buildIlinkCommonHeaders(),
   };
 }
 
@@ -41,7 +42,7 @@ async function post<T>(
   timeoutMs: number,
 ): Promise<T> {
   const url = new URL(endpoint, opts.baseUrl.endsWith("/") ? opts.baseUrl : opts.baseUrl + "/");
-  const body = JSON.stringify({ ...payload, base_info: { channel_version: CHANNEL_VERSION } });
+  const body = JSON.stringify({ ...payload, base_info: buildBaseInfo() });
   const headers = buildHeaders(opts.token, body);
 
   const controller = new AbortController();

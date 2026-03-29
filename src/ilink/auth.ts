@@ -4,6 +4,7 @@
  * 2. Long-poll get_qrcode_status → wait/scanned/confirmed/expired
  * 3. On confirmed → receive bot_token + ilink_bot_id + baseurl
  */
+import { buildIlinkCommonHeaders } from "./protocol.js";
 
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
 const QR_POLL_TIMEOUT_MS = 35_000;
@@ -30,12 +31,53 @@ interface StatusResponse {
   ilink_user_id?: string;
 }
 
+type ErrorLikeResponse = {
+  errcode?: number;
+  errmsg?: string;
+  message?: string;
+};
+
+function extractErrorMessage(rawText: string, fallback: string): string {
+  if (!rawText.trim()) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(rawText) as ErrorLikeResponse;
+    const message = parsed.errmsg?.trim() || parsed.message?.trim();
+    if (message) {
+      return message;
+    }
+  } catch {
+    // Ignore invalid JSON and fall back to raw text below.
+  }
+
+  return `${fallback}: ${rawText}`;
+}
+
+function parseJson<T>(rawText: string, fallback: string): T {
+  try {
+    return JSON.parse(rawText) as T;
+  } catch {
+    throw new Error(`${fallback}: ${rawText}`);
+  }
+}
+
 async function fetchQRCode(apiBaseUrl: string): Promise<QRCodeResponse> {
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
   const url = `${base}ilink/bot/get_bot_qrcode?bot_type=3`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch QR code: ${res.status}`);
-  return (await res.json()) as QRCodeResponse;
+  const res = await fetch(url, { headers: buildIlinkCommonHeaders() });
+  const rawText = await res.text();
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(rawText, `Failed to fetch QR code (${res.status})`));
+  }
+
+  const payload = parseJson<QRCodeResponse & ErrorLikeResponse>(rawText, "Invalid QR code response");
+  if (!payload.qrcode || !payload.qrcode_img_content) {
+    throw new Error(extractErrorMessage(rawText, "QR code response missing required fields"));
+  }
+
+  return payload;
 }
 
 async function pollStatus(apiBaseUrl: string, qrcode: string): Promise<StatusResponse> {
@@ -45,12 +87,21 @@ async function pollStatus(apiBaseUrl: string, qrcode: string): Promise<StatusRes
   const timer = setTimeout(() => controller.abort(), QR_POLL_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      headers: { "iLink-App-ClientVersion": "1" },
+      headers: buildIlinkCommonHeaders(),
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`QR status poll failed: ${res.status}`);
-    return (await res.json()) as StatusResponse;
+    const rawText = await res.text();
+    if (!res.ok) {
+      throw new Error(extractErrorMessage(rawText, `QR status poll failed (${res.status})`));
+    }
+
+    const payload = parseJson<StatusResponse & ErrorLikeResponse>(rawText, "Invalid QR status response");
+    if (!payload.status) {
+      throw new Error(extractErrorMessage(rawText, "QR status response missing status"));
+    }
+
+    return payload;
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof Error && err.name === "AbortError") {
